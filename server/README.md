@@ -5,7 +5,7 @@
 ### Compilation
 
 ```
-./scripts/compile.sh
+./scripts/build.sh
 ```
 
 ### Run example
