@@ -8,26 +8,46 @@ find_package(spdlog REQUIRED)
 
 
 add_executable(server
-        src/main.cpp
-        inc/event.h
+        src/server.cpp
         inc/epoll_async_handler.h
-        src/event.cpp
         src/epoll_async_handler.cpp
-        inc/socket_server.h
-        src/socket_server.cpp
+        inc/tcp_socket.h
+        src/tcp_socket.cpp
         inc/abstract_async_handler.h
-        inc/abstract_event.h
-        src/abstract_event.cpp
+        inc/event.h
+        src/event.cpp
         inc/io_object.h
         src/io_object.cpp
         inc/operations.h
         src/operations.cpp
         inc/echo_server.h src/echo_server.cpp)
 
+add_executable(client
+        src/client.cpp
+        inc/epoll_async_handler.h
+        src/epoll_async_handler.cpp
+        inc/tcp_socket.h
+        src/tcp_socket.cpp
+        inc/abstract_async_handler.h
+        inc/event.h
+        src/event.cpp
+        inc/io_object.h
+        src/io_object.cpp
+        inc/operations.h
+        src/operations.cpp
+        inc/echo_client.h src/echo_client.cpp)
+
 target_include_directories(server PUBLIC inc)
 
 target_link_libraries(server Threads::Threads)
 
 target_link_libraries(server spdlog::spdlog)
+
+
+target_include_directories(client PUBLIC inc)
+
+target_link_libraries(client Threads::Threads)
+
+target_link_libraries(client spdlog::spdlog)
 
 

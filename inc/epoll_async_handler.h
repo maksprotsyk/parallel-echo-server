@@ -12,7 +12,7 @@
 
 
 #include "abstract_async_handler.h"
-#include "abstract_event.h"
+#include "event.h"
 
 
 class EpollAsyncHandler: public AbstractAsyncHandler {
@@ -20,9 +20,9 @@ public:
     explicit EpollAsyncHandler(size_t maxEvents);
     EpollAsyncHandler(const EpollAsyncHandler& handler) = delete;
 
-    bool addEvent(AbstractEvent* event) override;
-    bool removeEvent(const AbstractEvent* event) override;
-    bool detachEvent(const AbstractEvent* event) override;
+    bool addEvent(Event* event) override;
+    bool removeEvent(const Event* event) override;
+    bool detachEvent(const Event* event) override;
     void runEventLoop() override;
     void finish() override;
     ~EpollAsyncHandler();
@@ -33,7 +33,7 @@ private:
     int fd;
     std::atomic<bool> isFinished;
 
-    static int getMode(AbstractEvent::Type type);
+    static int getMode(Event::Type type);
     bool removeEvent(int eventFd);
 
 

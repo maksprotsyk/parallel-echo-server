@@ -7,9 +7,10 @@
 
 #include <iostream>
 
-#include "socket_server.h"
+#include "tcp_socket.h"
 #include "operations.h"
 #include "abstract_async_handler.h"
+#include "logging.h"
 
 class EchoServer {
 public:
@@ -20,7 +21,7 @@ public:
     void acceptFunction(IOObject newObject, Operations::Error error);
     void deleteFunction(IOObject obj);
 private:
-    SocketServer server;
+    TcpSocket server;
     std::unordered_map<int, IOObject> connections;
     std::unordered_map<int, std::vector<char>> buffers;
 

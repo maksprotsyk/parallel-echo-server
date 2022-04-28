@@ -1,12 +1,34 @@
 //
 // Created by mprotsyk on 27.04.22.
 //
-
 #include "event.h"
 
-Event::Event(AbstractAsyncHandler* handler, int fd, Type type): AbstractEvent(handler, fd, type) {
+Event::Event(AbstractAsyncHandler *handler_, int fd_, Event::Type type_)
+: handler(handler_),
+  fd(fd_),
+  type(type_),
+  state(State::INIT)
+{
+    callback = [](){};
+}
+
+void Event::setCallback(const std::function<void()> &callback_) {
+    callback = callback_;
 
 }
+
+std::function<void()> Event::getCallback() const {
+    return callback;
+}
+
+Event::Type Event::getType() const {
+    return type;
+}
+
+int Event::getDescriptor() const {
+    return fd;
+}
+
 
 Event::~Event() {
     std::unique_lock lock(mutex);
@@ -37,7 +59,7 @@ bool Event::schedule() {
 
 bool Event::wait() {
     std::unique_lock lock(mutex);
-    while (state == State::SCHEDULED) {
+    while (state == State::SCHEDULED || state == State::PROCESSED) {
         cv.wait(lock);
     }
     return state == State::READY;
@@ -45,7 +67,7 @@ bool Event::wait() {
 
 bool Event::makeReady() {
     std::unique_lock lock(mutex);
-    if (state != State::SCHEDULED) {
+    if (state != State::PROCESSED) {
         return false;
     }
     state = State::READY;
@@ -67,7 +89,7 @@ bool Event::detach() {
 
 }
 
-AbstractEvent::State Event::getState() const {
+Event::State Event::getState() const {
     std::unique_lock lock(mutex);
     return state;
 }
@@ -81,3 +103,11 @@ bool Event::myCancel() {
     return true;
 }
 
+bool Event::makeProcessed() {
+    std::unique_lock lock(mutex);
+    if (state != State::SCHEDULED) {
+        return false;
+    }
+    state = State::PROCESSED;
+    return true;
+}

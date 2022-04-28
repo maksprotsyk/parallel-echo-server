@@ -22,6 +22,9 @@ namespace Operations {
     Error listen(IOObject& obj, size_t maxPendingConnections);
     Error accept(IOObject& obj, std::vector<char>& data);
 
+    Error connect(IOObject& obj, const std::string& ip, int port);
+    void asyncConnect(IOObject& obj, const std::string& ip, int port, std::function<void(IOObject&, Error)> callback);
+
     Error close(IOObject& obj);
 
     void asyncAccept(IOObject& obj, const std::function<void(IOObject, Error)>& callback);

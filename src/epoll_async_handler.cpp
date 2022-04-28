@@ -6,8 +6,9 @@
 
 struct EpollEventData {
     std::function<void()> callback;
+    std::function<bool()> onProcessed;
     std::function<bool()> onReady;
-    int fd{};
+    int fd;
 };
 
 
@@ -19,7 +20,7 @@ EpollAsyncHandler::EpollAsyncHandler(size_t maxEvents_): maxEvents(maxEvents_), 
     }
 }
 
-bool EpollAsyncHandler::addEvent(AbstractEvent* event) {
+bool EpollAsyncHandler::addEvent(Event* event) {
     if (eventsNum == maxEvents) {
         return false;
     }
@@ -29,7 +30,8 @@ bool EpollAsyncHandler::addEvent(AbstractEvent* event) {
     epollEvent.events = getMode(event->getType());
 
     auto data = new EpollEventData;
-    data->onReady = [&event](){return event->makeReady();};
+    data->onReady = [event](){return event->makeReady();};
+    data->onProcessed = [event](){return event->makeProcessed();};
     data->callback = event->getCallback();
     data->fd = event->getDescriptor();
     epollEvent.data.ptr = reinterpret_cast<void*>(data);
@@ -44,7 +46,7 @@ bool EpollAsyncHandler::addEvent(AbstractEvent* event) {
     return true;
 }
 
-bool EpollAsyncHandler::removeEvent(const AbstractEvent* event) {
+bool EpollAsyncHandler::removeEvent(const Event* event) {
     return removeEvent(event->getDescriptor());
 }
 
@@ -55,17 +57,20 @@ EpollAsyncHandler::~EpollAsyncHandler() {
 
 void EpollAsyncHandler::runEventLoop() {
     while (!isFinished || eventsNum > 0) {
-        auto count = epoll_wait(fd, events, static_cast<int>(maxEvents), -1);
+        auto count = epoll_wait(fd, events, static_cast<int>(maxEvents), 0);
         if (count < 0) {
             throw std::runtime_error("Error in epoll loop");
         }
 
+
         for (size_t i = 0; i < count; ++i) {
             auto data = reinterpret_cast<EpollEventData*>(events[i].data.ptr);
-            if (data->onReady()) {
+            if (data->onProcessed()) {
                 removeEvent(data->fd);
                 data->callback();
+                data->onReady();
             }
+
         }
     }
 
@@ -75,13 +80,14 @@ void EpollAsyncHandler::finish() {
     isFinished = true;
 }
 
-bool EpollAsyncHandler::detachEvent(const AbstractEvent* event) {
+bool EpollAsyncHandler::detachEvent(const Event* event) {
     epoll_event epollEvent{};
 
     epollEvent.events = getMode(event->getType());
 
     auto data = new EpollEventData;
     data->onReady = [](){return true;};
+    data->onProcessed = [](){return true;};
     data->callback = event->getCallback();
     data->fd = event->getDescriptor();
     epollEvent.data.ptr = reinterpret_cast<void*>(data);
@@ -93,16 +99,16 @@ bool EpollAsyncHandler::detachEvent(const AbstractEvent* event) {
     return true;
 }
 
-int EpollAsyncHandler::getMode(AbstractEvent::Type type) {
+int EpollAsyncHandler::getMode(Event::Type type) {
     int res;
     switch (type) {
-        case AbstractEvent::Type::READY_IN:
+        case Event::Type::READY_IN:
             res = EPOLLIN;
             break;
-        case AbstractEvent::Type::READY_OUT:
+        case Event::Type::READY_OUT:
             res = EPOLLOUT;
             break;
-        case AbstractEvent::Type::DISCONNECTION:
+        case Event::Type::DISCONNECTION:
             res = EPOLLRDHUP;
             break;
     }

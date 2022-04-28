@@ -5,7 +5,7 @@
 #include "operations.h"
 
 #include <utility>
-
+#include "iostream"
 namespace Operations {
     constexpr int READ_BUFFER_SIZE = 512;
 
@@ -61,12 +61,13 @@ namespace Operations {
             };
         }
 
+
     }
 
 
     Error read(IOObject& obj, std::vector<char>& data) {
         Error error;
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_IN);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_IN);
         event.setCallback(readCallback(obj, data,  [&error](IOObject&, std::vector<char>&, Error res) {
             error = res;
         }));
@@ -75,7 +76,7 @@ namespace Operations {
         return error;
     }
     void asyncRead(IOObject& obj, std::vector<char>& data, std::function<void(IOObject&, std::vector<char>&, Error)> callback) {
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_IN);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_IN);
         event.setCallback(readCallback(obj, data,  std::move(callback)));
         event.schedule();
         event.detach();
@@ -83,7 +84,7 @@ namespace Operations {
 
     Error write(IOObject& obj, std::vector<char>& data) {
         Error error;
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_OUT);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_OUT);
         event.setCallback(writeCallback(obj, data,  [&error](IOObject&, std::vector<char>&, Error res) {
             error = res;
         }));
@@ -92,7 +93,7 @@ namespace Operations {
         return error;
     }
     void asyncWrite(IOObject& obj, std::vector<char>& data, std::function<void(IOObject&, std::vector<char>&, Error)> callback) {
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_OUT);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_OUT);
         event.setCallback(writeCallback(obj, data,  std::move(callback)));
         event.schedule();
         event.detach();
@@ -121,7 +122,7 @@ namespace Operations {
     }
 
     void asyncAccept(IOObject& obj, const std::function<void(IOObject, Error)>& callback) {
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_IN);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_IN);
         event.setCallback(acceptCallback(obj, callback));
         event.schedule();
         event.detach();
@@ -130,7 +131,7 @@ namespace Operations {
     std::pair<IOObject, Error> accept(IOObject& obj) {
         IOObject newObj(nullptr, -1);
         Error error;
-        Event event(obj.getHandler(), obj.getDescriptor(), AbstractEvent::Type::READY_IN);
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_IN);
         event.setCallback(acceptCallback(obj, [&newObj, &error](IOObject accepted, Error res){
             error = res;
             newObj = accepted;
@@ -146,6 +147,47 @@ namespace Operations {
             return Error::ERROR;
         }
         return Error::SUCCESS;
+    }
+
+
+    Error connect(IOObject& obj, const std::string& ip, int port) {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = inet_addr(ip.c_str());
+        address.sin_port = htons(port);
+        int res = ::connect(obj.getDescriptor(), (struct sockaddr *)&address, sizeof(address));
+        if (res < 0 && errno != EINPROGRESS) {
+            return Error::ERROR;
+        }
+        if (res == 0) {
+            return Error::SUCCESS;
+        }
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_OUT);
+        event.setCallback([](){});
+        event.schedule();
+        event.wait();
+        return Error::SUCCESS;
+    }
+
+    void asyncConnect(IOObject& obj, const std::string& ip, int port, std::function<void(IOObject&, Error)> callback) {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = inet_addr(ip.c_str());
+        address.sin_port = htons(port);
+        int res = ::connect(obj.getDescriptor(), (struct sockaddr *)&address, sizeof(address));
+        if (res < 0 && errno != EINPROGRESS) {
+            callback(obj, Operations::Error::ERROR);
+            return;
+        }
+        if (res == 0) {
+            callback(obj, Operations::Error::SUCCESS);
+            return;
+        }
+
+        Event event(obj.getHandler(), obj.getDescriptor(), Event::Type::READY_OUT);
+        event.setCallback([&obj, callback](){ callback(obj, Operations::Error::SUCCESS);});
+        event.schedule();
+        event.detach();
     }
 
 }
