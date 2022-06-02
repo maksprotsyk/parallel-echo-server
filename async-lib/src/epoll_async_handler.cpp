@@ -41,10 +41,11 @@ bool EpollAsyncHandler::addEvent(Event* event) {
 
     epollEvent.events = getMode(event->getType());
 
+
     auto data = new EpollEventData;
     data->onReady = [event](){return event->makeReady();};
     data->onProcessed = [event](){return event->makeProcessed();};
-    data->callback = [event]() {event->getCallback()();};
+    data->callback = event->getCallback();
     data->fd = event->getDescriptor();
     epollEvent.data.ptr = reinterpret_cast<void*>(data);
 
@@ -153,7 +154,7 @@ bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &
 
     std::unique_lock lock(queueMutex);
     Deadline deadline;
-    deadline.timeoutCallback = [event]() {event->getTimeoutCallback()();};
+    deadline.timeoutCallback = event->getTimeoutCallback();
     deadline.onTimeout = [event]() {return event->makeTimeout();};
     deadline.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
     deadline.deadline = std::chrono::system_clock::now() + ms;

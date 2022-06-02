@@ -4,75 +4,75 @@
 
 #include "poll_async_handler.h"
 
+
+
 PollAsyncHandler::PollAsyncHandler(size_t maxEvents_): maxEvents(maxEvents_), eventsNum(0), isFinished(false) {
+    eventDescriptors = new pollfd[maxEvents];
 }
 
 bool PollAsyncHandler::addEvent(Event* event) {
-    std::unique_lock lock(mapMutex);
+
+    std::unique_lock lock(mutex);
     if (eventsNum == maxEvents) {
         return false;
     }
+
+
+    PollEventData data;
+    data.onReady = [event](){return event->makeReady();};
+    data.onProcessed = [event](){return event->makeProcessed();};
+    data.callback = event->getCallback();
+    data.index = eventsNum;
+
+    eventsData.emplace(event->getDescriptor(), data);
 
     pollfd pollEvent{};
 
     pollEvent.events = getMode(event->getType());
     pollEvent.fd = event->getDescriptor();
 
-    PollEventData data;
-    data.onReady = [event](){return event->makeReady();};
-    data.onProcessed = [event](){return event->makeProcessed();};
-    data.callback = event->getCallback();
-    data.event = pollEvent;
-
-    eventsData.emplace(event->getDescriptor(), data);
+    eventDescriptors[eventsNum] = pollEvent;
 
     eventsNum++;
     return true;
 }
 
 bool PollAsyncHandler::removeEvent(const Event* event) {
-    std::unique_lock lock(mapMutex);
-    if (eventsNum == 0) {
-        return false;
-    }
-    return eventsData.erase(event->getDescriptor());
+    return removeEvent(event->getDescriptor());
 }
 
 
 void PollAsyncHandler::runEventLoop() {
-    auto eventDescriptors = new pollfd[maxEvents];
-    auto actions = new PollEventData[maxEvents];
     while (!isFinished || eventsNum > 0) {
-        size_t eventsCount = 0;
-        {
-            std::unique_lock lock(mapMutex);
-            for (auto& [k, v]: eventsData) {
-                eventDescriptors[eventsCount] = v.event;
-                actions[eventsCount] = v;
-                eventsCount++;
-            }
-        }
+        std::unique_lock lock(mutex);
 
-        auto count = poll(eventDescriptors, eventsCount, -1);
+        auto count = poll(eventDescriptors, eventsNum, -1);
+
         if (count < 0) {
             throw std::runtime_error("Error in poll loop");
         }
 
-        for (size_t i = 0; i < eventsCount; ++i) {
-            if (! (eventDescriptors[i].events & eventDescriptors[i].revents)) {
+        std::vector<std::pair<PollEventData, int>> triggered;
+
+        for (size_t i = 0; i < eventsNum; ++i) {
+            if (! (eventDescriptors[i].revents)) {
                 continue;
             }
-            if (actions[i].onProcessed()) {
-                removeEvent(eventDescriptors[i].fd);
-                actions[i].callback();
-                actions[i].onReady();
-            }
+            triggered.emplace_back(eventsData[eventDescriptors[i].fd], eventDescriptors[i].fd);
 
         }
-    }
+        lock.unlock();
 
-    delete[] eventDescriptors;
-    delete[] actions;
+        for (const auto& [data, fd]: triggered) {
+            if (data.onProcessed()) {
+                removeEvent(fd);
+                data.callback();
+                data.onReady();
+            }
+        }
+
+
+    }
 
 }
 
@@ -81,7 +81,7 @@ void PollAsyncHandler::finish() {
 }
 
 bool PollAsyncHandler::detachEvent(const Event* event) {
-    std::unique_lock lock(mapMutex);
+    std::unique_lock lock(mutex);
     auto itr = eventsData.find(event->getDescriptor());
     if (itr == eventsData.end()) {
         return false;
@@ -109,19 +109,31 @@ short PollAsyncHandler::getMode(Event::Type type) {
 }
 
 bool PollAsyncHandler::removeEvent(int eventFd) {
-    std::unique_lock lock(mapMutex);
+    std::unique_lock lock(mutex);
+    if (eventsNum == 0) {
+        return false;
+    }
     auto itr = eventsData.find(eventFd);
     if (itr == eventsData.end()) {
         return false;
     }
-    eventsData.erase(itr);
-    eventsNum--;
 
+    eventDescriptors[itr->second.index] = eventDescriptors[eventsNum - 1];
+
+    eventsData[eventDescriptors[itr->second.index].fd].index = itr->second.index;
+    eventsData.erase(eventFd);
+
+    eventsNum--;
     return true;
 }
 
 bool PollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
     return false;
+}
+
+PollAsyncHandler::~PollAsyncHandler() {
+    delete[] eventDescriptors;
+
 }
 
 

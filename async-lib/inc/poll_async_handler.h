@@ -27,6 +27,7 @@ public:
     bool detachEvent(const Event* event) override;
     void runEventLoop() override;
     void finish() override;
+    virtual ~PollAsyncHandler();
 private:
     size_t maxEvents;
     std::atomic<size_t> eventsNum;
@@ -36,14 +37,16 @@ private:
         std::function<void()> callback;
         std::function<bool()> onProcessed;
         std::function<bool()> onReady;
-        pollfd event;
+        size_t index;
     };
 
+    pollfd* eventDescriptors;
     std::unordered_map<int, PollEventData> eventsData;
-    std::mutex mapMutex;
 
+    std::mutex mutex;
     static short getMode(Event::Type type);
     bool removeEvent(int eventFd);
+
 
 
 };

@@ -75,7 +75,6 @@ void EchoServer::acceptFunction(IOObject newObject, Operations::Error error) {
             readFunction(usedObject, newData, error);
         });
     }
-
     Operations::asyncAccept(server, [this](IOObject newObject, Operations::Error error) {
         acceptFunction(newObject, error);
     });
