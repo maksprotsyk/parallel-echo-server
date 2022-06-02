@@ -10,6 +10,7 @@ Event::Event(AbstractAsyncHandler *handler_, int fd_, Event::Type type_)
   state(State::INIT)
 {
     callback = [](){};
+    timeoutCallback = [](){};
 }
 
 void Event::setCallback(const std::function<void()> &callback_) {
@@ -111,3 +112,44 @@ bool Event::makeProcessed() {
     state = State::PROCESSED;
     return true;
 }
+
+bool Event::makeTimeout() {
+    std::unique_lock lock(mutex);
+    if (state != State::PROCESSED_TIMEOUT) {
+        return false;
+    }
+    state = State::TIMEOUT;
+    cv.notify_one();
+    return true;
+}
+
+
+bool Event::schedule(const std::chrono::milliseconds &ms) {
+    std::unique_lock lock(mutex);
+    if (state != State::INIT) {
+        return false;
+    }
+    state = State::SCHEDULED;
+    handler->addEvent(this, ms);
+    return true;
+}
+
+void Event::setTimeoutCallback(const std::function<void()> &timeoutCallback_) {
+    timeoutCallback = timeoutCallback_;
+
+}
+
+std::function<void()> Event::getTimeoutCallback() const {
+    return timeoutCallback;
+}
+
+bool Event::makeProcessedTimeout() {
+    std::unique_lock lock(mutex);
+    if (state != State::SCHEDULED) {
+        return false;
+    }
+    state = State::PROCESSED_TIMEOUT;
+    return true;
+}
+
+

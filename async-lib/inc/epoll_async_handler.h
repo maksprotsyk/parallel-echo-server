@@ -9,10 +9,14 @@
 #include <cstdlib>
 #include <sys/epoll.h>
 #include <unistd.h>
+#include <queue>
 
 
 #include "abstract_async_handler.h"
 #include "event.h"
+
+
+struct Deadline;
 
 
 class EpollAsyncHandler: public AbstractAsyncHandler {
@@ -21,6 +25,7 @@ public:
     EpollAsyncHandler(const EpollAsyncHandler& handler) = delete;
 
     bool addEvent(Event* event) override;
+    bool addEvent(Event* event, const std::chrono::milliseconds& ms) override;
     bool removeEvent(const Event* event) override;
     bool detachEvent(const Event* event) override;
     void runEventLoop() override;
@@ -35,6 +40,9 @@ private:
 
     static int getMode(Event::Type type);
     bool removeEvent(int eventFd);
+
+    std::priority_queue<Deadline> deadlines;
+    std::mutex queueMutex;
 
 
 };

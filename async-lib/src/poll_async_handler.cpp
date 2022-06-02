@@ -120,4 +120,8 @@ bool PollAsyncHandler::removeEvent(int eventFd) {
     return true;
 }
 
+bool PollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
+    return false;
+}
+
 

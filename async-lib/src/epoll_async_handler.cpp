@@ -8,8 +8,20 @@ struct EpollEventData {
     std::function<void()> callback;
     std::function<bool()> onProcessed;
     std::function<bool()> onReady;
-    int fd;
+    int fd{};
 };
+
+struct Deadline {
+    std::chrono::system_clock::time_point deadline;
+    std::function<bool()> onTimeout;
+    std::function<void()> timeoutCallback;
+    std::function<bool()> onProcessedTimeout;
+    int fd{};
+};
+
+bool operator<(const Deadline& deadline1, const Deadline& deadline2) {
+    return deadline1.deadline >= deadline2.deadline;
+}
 
 
 EpollAsyncHandler::EpollAsyncHandler(size_t maxEvents_): maxEvents(maxEvents_), eventsNum(0), isFinished(false) {
@@ -32,7 +44,7 @@ bool EpollAsyncHandler::addEvent(Event* event) {
     auto data = new EpollEventData;
     data->onReady = [event](){return event->makeReady();};
     data->onProcessed = [event](){return event->makeProcessed();};
-    data->callback = event->getCallback();
+    data->callback = [event]() {event->getCallback()();};
     data->fd = event->getDescriptor();
     epollEvent.data.ptr = reinterpret_cast<void*>(data);
 
@@ -71,6 +83,15 @@ void EpollAsyncHandler::runEventLoop() {
                 data->onReady();
             }
 
+        }
+
+        std::unique_lock lock(queueMutex);
+        while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
+            if (deadlines.top().onProcessedTimeout()) {
+                removeEvent(deadlines.top().fd);
+                deadlines.top().onTimeout();
+            }
+            deadlines.pop();
         }
     }
 
@@ -122,6 +143,23 @@ bool EpollAsyncHandler::removeEvent(int eventFd) {
         return false;
     }
     eventsNum--;
+    return true;
+}
+
+bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
+    if (!addEvent(event)) {
+        return false;
+    }
+
+    std::unique_lock lock(queueMutex);
+    Deadline deadline;
+    deadline.timeoutCallback = [event]() {event->getTimeoutCallback()();};
+    deadline.onTimeout = [event]() {return event->makeTimeout();};
+    deadline.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
+    deadline.deadline = std::chrono::system_clock::now() + ms;
+    deadline.fd = event->getDescriptor();
+    deadlines.emplace(std::move(deadline));
+
     return true;
 }
 

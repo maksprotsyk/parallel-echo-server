@@ -22,6 +22,7 @@ public:
     PollAsyncHandler(const PollAsyncHandler& handler) = delete;
 
     bool addEvent(Event* event) override;
+    bool addEvent(Event* event, const std::chrono::milliseconds& ms) override;
     bool removeEvent(const Event* event) override;
     bool detachEvent(const Event* event) override;
     void runEventLoop() override;

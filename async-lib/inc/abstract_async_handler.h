@@ -14,6 +14,7 @@ class Event;
 class AbstractAsyncHandler {
 public:
     virtual bool addEvent(Event* event) = 0;
+    virtual bool addEvent(Event* event, const std::chrono::milliseconds& ms) = 0;
     virtual bool removeEvent(const Event* event) = 0;
     virtual bool detachEvent(const Event* event) = 0;
     virtual void runEventLoop() = 0;
