@@ -10,10 +10,12 @@
 #include <cstdlib>
 #include <poll.h>
 #include <unistd.h>
-
+#include <queue>
 
 #include "abstract_async_handler.h"
 #include "event.h"
+#include "deadline.h"
+#include "event_data.h"
 
 
 class PollAsyncHandler: public AbstractAsyncHandler {
@@ -33,17 +35,15 @@ private:
     std::atomic<size_t> eventsNum;
     std::atomic<bool> isFinished;
 
-    struct PollEventData {
-        std::function<void()> callback;
-        std::function<bool()> onProcessed;
-        std::function<bool()> onReady;
-        size_t index;
-    };
+    std::priority_queue<Deadline> deadlines;
+    std::unordered_map<int, std::pair<EventData, size_t>> data;
+    std::mutex queueMutex;
+    std::mutex pollMutex;
+    std::mutex mapMutex;
 
     pollfd* eventDescriptors;
-    std::unordered_map<int, PollEventData> eventsData;
 
-    std::mutex mutex;
+
     static short getMode(Event::Type type);
     bool removeEvent(int eventFd);
 

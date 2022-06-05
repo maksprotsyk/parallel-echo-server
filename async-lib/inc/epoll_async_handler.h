@@ -11,12 +11,10 @@
 #include <unistd.h>
 #include <queue>
 
-
 #include "abstract_async_handler.h"
 #include "event.h"
-
-
-struct Deadline;
+#include "deadline.h"
+#include "event_data.h"
 
 
 class EpollAsyncHandler: public AbstractAsyncHandler {
@@ -35,14 +33,17 @@ private:
     size_t maxEvents;
     epoll_event* events;
     std::atomic<size_t> eventsNum;
-    int fd;
+    int epollFd;
     std::atomic<bool> isFinished;
+
+    std::priority_queue<Deadline> deadlines;
+    std::unordered_map<int, EventData> data;
+    std::mutex queueMutex;
+    std::mutex epollMutex;
+    std::mutex mapMutex;
 
     static int getMode(Event::Type type);
     bool removeEvent(int eventFd);
-
-    std::priority_queue<Deadline> deadlines;
-    std::mutex queueMutex;
 
 
 };

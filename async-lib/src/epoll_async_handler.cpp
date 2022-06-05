@@ -4,58 +4,48 @@
 
 #include "epoll_async_handler.h"
 
-struct EpollEventData {
-    std::function<void()> callback;
-    std::function<bool()> onProcessed;
-    std::function<bool()> onReady;
-    int fd{};
-};
-
-struct Deadline {
-    std::chrono::system_clock::time_point deadline;
-    std::function<bool()> onTimeout;
-    std::function<void()> timeoutCallback;
-    std::function<bool()> onProcessedTimeout;
-    int fd{};
-};
-
-bool operator<(const Deadline& deadline1, const Deadline& deadline2) {
-    return deadline1.deadline >= deadline2.deadline;
-}
-
-
-EpollAsyncHandler::EpollAsyncHandler(size_t maxEvents_): maxEvents(maxEvents_), eventsNum(0), isFinished(false) {
+EpollAsyncHandler::EpollAsyncHandler(size_t maxEvents_)
+: maxEvents(maxEvents_), eventsNum(0), isFinished(false) {
     events = new epoll_event[maxEvents_];
-    fd = epoll_create1(EPOLL_CLOEXEC);
-    if (fd < 0) {
+    epollFd = epoll_create1(EPOLL_CLOEXEC);
+    if (epollFd < 0) {
         throw std::runtime_error("Can't create epoll structure");
     }
 }
 
 bool EpollAsyncHandler::addEvent(Event* event) {
-    if (eventsNum == maxEvents) {
+    if (eventsNum++ == maxEvents) {
+        eventsNum--;
         return false;
     }
 
     epoll_event epollEvent{};
 
     epollEvent.events = getMode(event->getType());
+    epollEvent.data.fd = event->getDescriptor();
 
 
-    auto data = new EpollEventData;
-    data->onReady = [event](){return event->makeReady();};
-    data->onProcessed = [event](){return event->makeProcessed();};
-    data->callback = event->getCallback();
-    data->fd = event->getDescriptor();
-    epollEvent.data.ptr = reinterpret_cast<void*>(data);
+    EventData eventData;
+    eventData.onReady = [event](){return event->makeReady();};
+    eventData.onProcessed = [event](){return event->makeProcessed();};
+    eventData.callback = event->getCallback();
+    eventData.timeoutCallback = event->getTimeoutCallback();
+    eventData.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
+    eventData.onTimeout = [event]() {return event->makeTimeout();};
+    eventData.fd = event->getDescriptor();
 
+    mapMutex.lock();
+    data.emplace(event->getDescriptor(), eventData);
+    mapMutex.unlock();
 
-    int res = epoll_ctl(fd, EPOLL_CTL_ADD, event->getDescriptor(), &epollEvent);
+    epollMutex.lock();
+    int res = epoll_ctl(epollFd, EPOLL_CTL_ADD, event->getDescriptor(), &epollEvent);
+    epollMutex.unlock();
+
     if (res < 0) {
         perror("Error: ");
         throw std::runtime_error("Can't add the event to epoll struct");
     }
-    eventsNum++;
     return true;
 }
 
@@ -64,36 +54,66 @@ bool EpollAsyncHandler::removeEvent(const Event* event) {
 }
 
 EpollAsyncHandler::~EpollAsyncHandler() {
-    close(fd);
+    close(epollFd);
     delete[] events;
 }
 
 void EpollAsyncHandler::runEventLoop() {
     while (!isFinished || eventsNum > 0) {
-        auto count = epoll_wait(fd, events, static_cast<int>(maxEvents), 0);
+        epollMutex.lock();
+        auto count = epoll_wait(epollFd, events, static_cast<int>(maxEvents), 0);
+        epollMutex.unlock();
         if (count < 0) {
             throw std::runtime_error("Error in epoll loop");
         }
 
-
+        std::vector<EventData> toPerform;
+        mapMutex.lock();
         for (size_t i = 0; i < count; ++i) {
-            auto data = reinterpret_cast<EpollEventData*>(events[i].data.ptr);
-            if (data->onProcessed()) {
-                removeEvent(data->fd);
-                data->callback();
-                data->onReady();
+            int fd = events[i].data.fd;
+            auto itr = data.find(fd);
+            if (itr == data.end()) {
+                continue;
             }
+            toPerform.emplace_back(itr->second);
+        }
+        mapMutex.unlock();
 
+        for (auto& eventData: toPerform) {
+            if (eventData.onProcessed()) {
+                removeEvent(eventData.fd);
+                eventData.callback();
+                eventData.onReady();
+            } else {
+                removeEvent(eventData.fd);
+            }
         }
 
-        std::unique_lock lock(queueMutex);
+        mapMutex.lock();
+        queueMutex.lock();
+        std::vector<EventData> timeouts;
         while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
-            if (deadlines.top().onProcessedTimeout()) {
-                removeEvent(deadlines.top().fd);
-                deadlines.top().onTimeout();
+            auto itr = data.find(deadlines.top().fd);
+            if (itr == data.end()) {
+                continue;
             }
+            toPerform.emplace_back(itr->second);
             deadlines.pop();
         }
+        queueMutex.unlock();
+        mapMutex.unlock();
+
+        for (auto& eventData: timeouts) {
+            if (eventData.onProcessedTimeout()) {
+                removeEvent(eventData.fd);
+                eventData.timeoutCallback();
+                eventData.onTimeout();
+            } else {
+                removeEvent(eventData.fd);
+            }
+        }
+
+
     }
 
 }
@@ -103,21 +123,18 @@ void EpollAsyncHandler::finish() {
 }
 
 bool EpollAsyncHandler::detachEvent(const Event* event) {
-    epoll_event epollEvent{};
 
-    epollEvent.events = getMode(event->getType());
-
-    auto data = new EpollEventData;
-    data->onReady = [](){return true;};
-    data->onProcessed = [](){return true;};
-    data->callback = event->getCallback();
-    data->fd = event->getDescriptor();
-    epollEvent.data.ptr = reinterpret_cast<void*>(data);
-
-    int res = epoll_ctl(fd, EPOLL_CTL_MOD, event->getDescriptor(), &epollEvent);
-    if (res < 0) {
-        throw std::runtime_error("Can't add the event to epoll struct");
+    std::unique_lock lock(mapMutex);
+    auto itr = data.find(event->getDescriptor());
+    if (itr == data.end()) {
+        return false;
     }
+    auto& eventData = itr->second;
+    eventData.onReady = [](){return true;};
+    eventData.onProcessed = [](){return true;};
+    eventData.onTimeout = [](){return true;};
+    eventData.onProcessedTimeout = [](){return true;};
+
     return true;
 }
 
@@ -139,12 +156,21 @@ int EpollAsyncHandler::getMode(Event::Type type) {
 }
 
 bool EpollAsyncHandler::removeEvent(int eventFd) {
-    int res = epoll_ctl(fd, EPOLL_CTL_DEL, eventFd, nullptr);
+    epollMutex.lock();
+    int res = epoll_ctl(epollFd, EPOLL_CTL_DEL, eventFd, nullptr);
+    epollMutex.unlock();
     if (res < 0) {
+        return false;
+    }
+
+    std::unique_lock lock(mapMutex);
+    if (!data.erase(eventFd)) {
         return false;
     }
     eventsNum--;
     return true;
+
+
 }
 
 bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
@@ -154,13 +180,9 @@ bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &
 
     std::unique_lock lock(queueMutex);
     Deadline deadline;
-    deadline.timeoutCallback = event->getTimeoutCallback();
-    deadline.onTimeout = [event]() {return event->makeTimeout();};
-    deadline.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
     deadline.deadline = std::chrono::system_clock::now() + ms;
     deadline.fd = event->getDescriptor();
-    deadlines.emplace(std::move(deadline));
-
+    deadlines.emplace(deadline);
     return true;
 }
 

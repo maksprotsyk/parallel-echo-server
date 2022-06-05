@@ -11,30 +11,38 @@ PollAsyncHandler::PollAsyncHandler(size_t maxEvents_): maxEvents(maxEvents_), ev
 }
 
 bool PollAsyncHandler::addEvent(Event* event) {
-
-    std::unique_lock lock(mutex);
+    std::unique_lock lock(pollMutex);
     if (eventsNum == maxEvents) {
         return false;
     }
+    eventsNum++;
 
 
-    PollEventData data;
-    data.onReady = [event](){return event->makeReady();};
-    data.onProcessed = [event](){return event->makeProcessed();};
-    data.callback = event->getCallback();
-    data.index = eventsNum;
+    EventData eventData;
+    eventData.onReady = [event](){return event->makeReady();};
+    eventData.onProcessed = [event](){return event->makeProcessed();};
+    eventData.callback = event->getCallback();
+    eventData.timeoutCallback = event->getTimeoutCallback();
+    eventData.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
+    eventData.onTimeout = [event]() {return event->makeTimeout();};
+    eventData.fd = event->getDescriptor();
 
-    eventsData.emplace(event->getDescriptor(), data);
+    mapMutex.lock();
+    data.emplace(event->getDescriptor(), std::make_pair(eventData, eventsNum-1));
+    mapMutex.unlock();
 
     pollfd pollEvent{};
 
     pollEvent.events = getMode(event->getType());
     pollEvent.fd = event->getDescriptor();
 
-    eventDescriptors[eventsNum] = pollEvent;
+    eventDescriptors[eventsNum - 1] = pollEvent;
 
-    eventsNum++;
+
     return true;
+
+
+
 }
 
 bool PollAsyncHandler::removeEvent(const Event* event) {
@@ -44,30 +52,57 @@ bool PollAsyncHandler::removeEvent(const Event* event) {
 
 void PollAsyncHandler::runEventLoop() {
     while (!isFinished || eventsNum > 0) {
-        std::unique_lock lock(mutex);
-
+        std::unique_lock lock(pollMutex);
         auto count = poll(eventDescriptors, eventsNum, -1);
 
         if (count < 0) {
             throw std::runtime_error("Error in poll loop");
         }
 
-        std::vector<std::pair<PollEventData, int>> triggered;
-
-        for (size_t i = 0; i < eventsNum; ++i) {
-            if (! (eventDescriptors[i].revents)) {
+        std::vector<EventData> toPerform;
+        mapMutex.lock();
+        for (size_t i = 0; i < count; ++i) {
+            int fd = eventDescriptors[i].fd;
+            auto itr = data.find(fd);
+            if (itr == data.end()) {
                 continue;
             }
-            triggered.emplace_back(eventsData[eventDescriptors[i].fd], eventDescriptors[i].fd);
-
+            toPerform.emplace_back(itr->second.first);
         }
+        mapMutex.unlock();
         lock.unlock();
 
-        for (const auto& [data, fd]: triggered) {
-            if (data.onProcessed()) {
-                removeEvent(fd);
-                data.callback();
-                data.onReady();
+        for (auto& eventData: toPerform) {
+            if (eventData.onProcessed()) {
+                removeEvent(eventData.fd);
+                eventData.callback();
+                eventData.onReady();
+            } else {
+                removeEvent(eventData.fd);
+            }
+        }
+
+        queueMutex.lock();
+        mapMutex.lock();
+        std::vector<EventData> timeouts;
+        while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
+            auto itr = data.find(deadlines.top().fd);
+            if (itr == data.end()) {
+                continue;
+            }
+            toPerform.emplace_back(itr->second.first);
+            deadlines.pop();
+        }
+        queueMutex.unlock();
+        mapMutex.unlock();
+
+        for (auto& eventData: timeouts) {
+            if (eventData.onProcessedTimeout()) {
+                removeEvent(eventData.fd);
+                eventData.timeoutCallback();
+                eventData.onTimeout();
+            } else {
+                removeEvent(eventData.fd);
             }
         }
 
@@ -81,13 +116,16 @@ void PollAsyncHandler::finish() {
 }
 
 bool PollAsyncHandler::detachEvent(const Event* event) {
-    std::unique_lock lock(mutex);
-    auto itr = eventsData.find(event->getDescriptor());
-    if (itr == eventsData.end()) {
+    std::unique_lock lock(mapMutex);
+    auto itr = data.find(event->getDescriptor());
+    if (itr == data.end()) {
         return false;
     }
-    itr->second.onReady = [](){return true;};
-    itr->second.onProcessed = [](){return true;};
+    auto& eventData = itr->second.first;
+    eventData.onReady = [](){return true;};
+    eventData.onProcessed = [](){return true;};
+    eventData.onTimeout = [](){return true;};
+    eventData.onProcessedTimeout = [](){return true;};
 
     return true;
 }
@@ -109,31 +147,44 @@ short PollAsyncHandler::getMode(Event::Type type) {
 }
 
 bool PollAsyncHandler::removeEvent(int eventFd) {
-    std::unique_lock lock(mutex);
+    std::unique_lock lock(pollMutex);
     if (eventsNum == 0) {
         return false;
     }
-    auto itr = eventsData.find(eventFd);
-    if (itr == eventsData.end()) {
+
+    mapMutex.lock();
+    auto itr = data.find(eventFd);
+    if (itr == data.end()) {
         return false;
     }
 
-    eventDescriptors[itr->second.index] = eventDescriptors[eventsNum - 1];
 
-    eventsData[eventDescriptors[itr->second.index].fd].index = itr->second.index;
-    eventsData.erase(eventFd);
+    eventDescriptors[itr->second.second] = eventDescriptors[eventsNum - 1];
+
+    data[eventDescriptors[itr->second.second].fd].second = itr->second.second;
+    data.erase(eventFd);
+
+    mapMutex.unlock();
 
     eventsNum--;
     return true;
 }
 
 bool PollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
-    return false;
+    if (!addEvent(event)) {
+        return false;
+    }
+
+    std::unique_lock lock(queueMutex);
+    Deadline deadline;
+    deadline.deadline = std::chrono::system_clock::now() + ms;
+    deadline.fd = event->getDescriptor();
+    deadlines.emplace(deadline);
+    return true;
 }
 
 PollAsyncHandler::~PollAsyncHandler() {
     delete[] eventDescriptors;
-
 }
 
 
