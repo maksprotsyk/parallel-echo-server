@@ -22,7 +22,11 @@ add_executable(server
         src/io_object.cpp
         inc/operations.h
         src/operations.cpp
-        inc/echo_server.h src/echo_server.cpp src/deadline.cpp)
+        inc/echo_server.h
+        src/echo_server.cpp
+        src/deadline.cpp
+        src/select_async_handler.cpp
+        inc/select_async_handler.h)
 
 add_executable(client
         src/client.cpp
@@ -42,7 +46,8 @@ add_executable(client
         inc/deadline.h
         inc/event_data.h
         src/deadline.cpp
-        )
+        inc/select_async_handler.h
+        src/select_async_handler.cpp)
 
 target_include_directories(server PUBLIC inc)
 

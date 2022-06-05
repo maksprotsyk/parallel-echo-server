@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "poll_async_handler.h"
+#include "select_async_handler.h"
 #include "echo_server.h"
 #include "logging.h"
 
@@ -18,7 +19,7 @@ int main(int argc, char *argv[]) {
     //spdlog::register_logger(logger);
     spdlog::flush_every(std::chrono::seconds(3));
 
-    auto* handler = new PollAsyncHandler(100);
+    auto* handler = new SelectAsyncHandler();
 
     EchoServer server(handler, "127.0.0.1", 8080);
 
