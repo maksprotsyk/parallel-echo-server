@@ -66,7 +66,6 @@ bool SelectAsyncHandler::detachEvent(const Event *event) {
     return true;
 }
 
-#include "iostream"
 
 void SelectAsyncHandler::runEventLoop() {
     while (!isFinished || eventsNum > 0) {
@@ -134,12 +133,12 @@ void SelectAsyncHandler::runEventLoop() {
         mapMutex.lock();
         queueMutex.lock();
         std::vector<EventData> timeouts;
-        while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
+        while (!deadlines.empty() && deadlines.top().deadline < std::chrono::system_clock::now()) {
             auto itr = data.find(deadlines.top().fd);
             if (itr == data.end()) {
                 continue;
             }
-            toPerform.emplace_back(itr->second);
+            timeouts.emplace_back(itr->second);
             deadlines.pop();
         }
         queueMutex.unlock();

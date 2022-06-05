@@ -92,12 +92,12 @@ void EpollAsyncHandler::runEventLoop() {
         mapMutex.lock();
         queueMutex.lock();
         std::vector<EventData> timeouts;
-        while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
+        while (!deadlines.empty() && deadlines.top().deadline < std::chrono::system_clock::now()) {
             auto itr = data.find(deadlines.top().fd);
             if (itr == data.end()) {
                 continue;
             }
-            toPerform.emplace_back(itr->second);
+            timeouts.emplace_back(itr->second);
             deadlines.pop();
         }
         queueMutex.unlock();

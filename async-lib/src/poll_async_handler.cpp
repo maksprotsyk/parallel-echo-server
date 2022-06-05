@@ -51,9 +51,9 @@ bool PollAsyncHandler::removeEvent(const Event* event) {
 
 
 void PollAsyncHandler::runEventLoop() {
-    while (!isFinished || eventsNum > 0) {
+    while (!isFinished || eventsNum > 0) {;
         std::unique_lock lock(pollMutex);
-        auto count = poll(eventDescriptors, eventsNum, -1);
+        auto count = poll(eventDescriptors, eventsNum, 0);
 
         if (count < 0) {
             throw std::runtime_error("Error in poll loop");
@@ -85,12 +85,12 @@ void PollAsyncHandler::runEventLoop() {
         queueMutex.lock();
         mapMutex.lock();
         std::vector<EventData> timeouts;
-        while (!deadlines.empty() && deadlines.top().deadline > std::chrono::system_clock::now()) {
+        while (!deadlines.empty() && deadlines.top().deadline < std::chrono::system_clock::now()) {
             auto itr = data.find(deadlines.top().fd);
             if (itr == data.end()) {
                 continue;
             }
-            toPerform.emplace_back(itr->second.first);
+            timeouts.emplace_back(itr->second.first);
             deadlines.pop();
         }
         queueMutex.unlock();
