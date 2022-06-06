@@ -53,7 +53,7 @@ bool Event::schedule() {
         return false;
     }
     state = State::SCHEDULED;
-    handler->addEvent(this);
+    handler->addEvent(*this);
     return true;
 }
 
@@ -81,7 +81,7 @@ bool Event::detach() {
     if (state != State::SCHEDULED) {
         return false;
     }
-    if (! handler->detachEvent(this)) {
+    if (! handler->detachEvent(*this)) {
         return false;
     }
     state = State::DETACHED;
@@ -100,7 +100,7 @@ bool Event::myCancel() {
         return false;
     }
     state = State::CANCELED;
-    handler->removeEvent(this);
+    handler->removeEvent(*this);
     return true;
 }
 
@@ -130,7 +130,7 @@ bool Event::schedule(const std::chrono::milliseconds &ms) {
         return false;
     }
     state = State::SCHEDULED;
-    handler->addEvent(this, ms);
+    handler->addEvent(*this, ms);
     return true;
 }
 

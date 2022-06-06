@@ -6,6 +6,7 @@
 #define SERVER_EVENT_DATA_H
 
 #include <functional>
+#include "event.h"
 
 struct EventData {
     std::function<void()> callback;
@@ -15,6 +16,10 @@ struct EventData {
     std::function<void()> timeoutCallback;
     std::function<bool()> onProcessedTimeout;
     int fd{};
+
+    void fromEvent(Event& event);
+    void fromDetachedEvent(const Event& event);
+
 };
 
 #endif //SERVER_EVENT_DATA_H

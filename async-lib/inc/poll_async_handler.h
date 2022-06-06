@@ -22,14 +22,16 @@ class PollAsyncHandler: public AbstractAsyncHandler {
 public:
     explicit PollAsyncHandler(size_t maxEvents);
     PollAsyncHandler(const PollAsyncHandler& handler) = delete;
-
-    bool addEvent(Event* event) override;
-    bool addEvent(Event* event, const std::chrono::milliseconds& ms) override;
-    bool removeEvent(const Event* event) override;
-    bool detachEvent(const Event* event) override;
+    virtual ~PollAsyncHandler();
     void runEventLoop() override;
     void finish() override;
-    virtual ~PollAsyncHandler();
+
+protected:
+    bool addEvent(Event& event) override;
+    bool addEvent(Event& event, const std::chrono::milliseconds& ms) override;
+    bool removeEvent(const Event& event) override;
+    bool detachEvent(const Event& event) override;
+
 private:
     size_t maxEvents;
     std::atomic<size_t> eventsNum;

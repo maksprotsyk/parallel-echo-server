@@ -13,7 +13,7 @@ EpollAsyncHandler::EpollAsyncHandler(size_t maxEvents_)
     }
 }
 
-bool EpollAsyncHandler::addEvent(Event* event) {
+bool EpollAsyncHandler::addEvent(Event& event) {
     if (eventsNum++ == maxEvents) {
         eventsNum--;
         return false;
@@ -21,25 +21,19 @@ bool EpollAsyncHandler::addEvent(Event* event) {
 
     epoll_event epollEvent{};
 
-    epollEvent.events = getMode(event->getType());
-    epollEvent.data.fd = event->getDescriptor();
+    epollEvent.events = getMode(event.getType());
+    epollEvent.data.fd = event.getDescriptor();
 
 
     EventData eventData;
-    eventData.onReady = [event](){return event->makeReady();};
-    eventData.onProcessed = [event](){return event->makeProcessed();};
-    eventData.callback = event->getCallback();
-    eventData.timeoutCallback = event->getTimeoutCallback();
-    eventData.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
-    eventData.onTimeout = [event]() {return event->makeTimeout();};
-    eventData.fd = event->getDescriptor();
+    eventData.fromEvent(event);
 
     mapMutex.lock();
-    data.emplace(event->getDescriptor(), eventData);
+    data.emplace(event.getDescriptor(), eventData);
     mapMutex.unlock();
 
     epollMutex.lock();
-    int res = epoll_ctl(epollFd, EPOLL_CTL_ADD, event->getDescriptor(), &epollEvent);
+    int res = epoll_ctl(epollFd, EPOLL_CTL_ADD, event.getDescriptor(), &epollEvent);
     epollMutex.unlock();
 
     if (res < 0) {
@@ -49,8 +43,8 @@ bool EpollAsyncHandler::addEvent(Event* event) {
     return true;
 }
 
-bool EpollAsyncHandler::removeEvent(const Event* event) {
-    return removeEvent(event->getDescriptor());
+bool EpollAsyncHandler::removeEvent(const Event& event) {
+    return removeEvent(event.getDescriptor());
 }
 
 EpollAsyncHandler::~EpollAsyncHandler() {
@@ -122,18 +116,16 @@ void EpollAsyncHandler::finish() {
     isFinished = true;
 }
 
-bool EpollAsyncHandler::detachEvent(const Event* event) {
+bool EpollAsyncHandler::detachEvent(const Event& event) {
 
     std::unique_lock lock(mapMutex);
-    auto itr = data.find(event->getDescriptor());
+    auto itr = data.find(event.getDescriptor());
     if (itr == data.end()) {
         return false;
     }
     auto& eventData = itr->second;
-    eventData.onReady = [](){return true;};
-    eventData.onProcessed = [](){return true;};
-    eventData.onTimeout = [](){return true;};
-    eventData.onProcessedTimeout = [](){return true;};
+
+    eventData.fromDetachedEvent(event);
 
     return true;
 }
@@ -173,7 +165,7 @@ bool EpollAsyncHandler::removeEvent(int eventFd) {
 
 }
 
-bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
+bool EpollAsyncHandler::addEvent(Event& event, const std::chrono::milliseconds &ms) {
     if (!addEvent(event)) {
         return false;
     }
@@ -181,7 +173,7 @@ bool EpollAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &
     std::unique_lock lock(queueMutex);
     Deadline deadline;
     deadline.deadline = std::chrono::system_clock::now() + ms;
-    deadline.fd = event->getDescriptor();
+    deadline.fd = event.getDescriptor();
     deadlines.emplace(deadline);
     return true;
 }

@@ -12,13 +12,15 @@
 class Event;
 
 class AbstractAsyncHandler {
-public:
-    virtual bool addEvent(Event* event) = 0;
-    virtual bool addEvent(Event* event, const std::chrono::milliseconds& ms) = 0;
-    virtual bool removeEvent(const Event* event) = 0;
-    virtual bool detachEvent(const Event* event) = 0;
+protected:
+    virtual bool addEvent(Event& event) = 0;
+    virtual bool addEvent(Event& event, const std::chrono::milliseconds& ms) = 0;
+    virtual bool removeEvent(const Event& event) = 0;
+    virtual bool detachEvent(const Event& event) = 0;
     virtual void runEventLoop() = 0;
     virtual void finish() = 0;
+
+    friend class Event;
 };
 
 #endif //SERVER_ABSTRACT_ASYNC_HANDLER_H

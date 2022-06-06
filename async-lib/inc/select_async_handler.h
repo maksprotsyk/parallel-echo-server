@@ -24,18 +24,18 @@ class SelectAsyncHandler: public AbstractAsyncHandler {
 public:
     explicit SelectAsyncHandler();
     SelectAsyncHandler(const SelectAsyncHandler& handler) = delete;
-
-    bool addEvent(Event* event) override;
-    bool addEvent(Event* event, const std::chrono::milliseconds& ms) override;
-    bool removeEvent(const Event* event) override;
-    bool detachEvent(const Event* event) override;
     void runEventLoop() override;
     void finish() override;
+
+protected:
+    bool addEvent(Event& event) override;
+    bool addEvent(Event& event, const std::chrono::milliseconds& ms) override;
+    bool removeEvent(const Event& event) override;
+    bool detachEvent(const Event& event) override;
+
 private:
 
     std::vector<std::set<int>> sets;
-
-
 
     std::atomic<size_t> eventsNum;
     std::atomic<bool> isFinished;
