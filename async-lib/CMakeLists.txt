@@ -13,14 +13,13 @@ add_library(async
         src/event.cpp
         inc/io_object.h
         src/io_object.cpp
-        src/operations.cpp
         src/echo_server.cpp
         src/echo_client.cpp
         src/deadline.cpp
         src/select_async_handler.cpp
         inc/promise.h
         src/event_data.cpp
-        )
+        inc/udp_socket.h src/udp_socket.cpp)
 
 
 target_include_directories(async PUBLIC inc)

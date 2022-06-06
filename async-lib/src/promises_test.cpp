@@ -41,7 +41,6 @@ int main(int argc, char *argv[]) {
         thread2.detach();
     };
 
-
     Promise<std::string> promise(handler, asyncFunc);
 
     std::function acceptor = [](std::string x){std::cout << x + "!" << std::endl; return x + "!"; };
