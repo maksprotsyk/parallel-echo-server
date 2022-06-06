@@ -49,6 +49,7 @@ std::function<void()> IOObject::writeCallback(
     };
 }
 
+
 std::function<void()> IOObject::acceptCallback(std::function<void(IOObject, Error)> callback) {
     return [this, callback] () {
         int newFd = ::accept4(getDescriptor(), nullptr, nullptr, SOCK_NONBLOCK);

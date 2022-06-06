@@ -41,6 +41,7 @@ void EchoServer::readFunction(IOObject& usedObject, std::vector<char>& newData, 
     );
     usedObject.asyncWrite(newData, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
         writeFunction(usedObject, newData, error);
+
     });
 }
 
@@ -50,9 +51,10 @@ void EchoServer::writeFunction(IOObject& usedObject, std::vector<char>& newData,
         return;
     }
     newData.clear();
-    usedObject.asyncRead(newData, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
-        readFunction(usedObject, newData, error);
-    });
+    deleteFunction(usedObject);
+    //usedObject.asyncRead(newData, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
+    //    readFunction(usedObject, newData, error);
+    //});
 }
 
 void EchoServer::acceptFunction(IOObject newObject, IOObject::Error error) {

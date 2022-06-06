@@ -55,7 +55,10 @@ void PollAsyncHandler::runEventLoop() {
 
         std::vector<EventData> toPerform;
         mapMutex.lock();
-        for (size_t i = 0; i < count; ++i) {
+        for (size_t i = 0; i < eventsNum; ++i) {
+            if (!(eventDescriptors[i].revents & eventDescriptors[i].events)) {
+                continue;
+            }
             int fd = eventDescriptors[i].fd;
             auto itr = data.find(fd);
             if (itr == data.end()) {
