@@ -9,7 +9,7 @@ EchoClient::EchoClient(AbstractAsyncHandler* handler, const std::string& ip, int
             spdlog::get(LOGGER_NAME),
             "Connecting"
     );
-    if (Operations::Error::SUCCESS != Operations::connect(client, ip, port)) {
+    if (IOObject::Error::SUCCESS != client.connect(ip, port)) {
         throw std::runtime_error("Can't connect");
     }
     SPDLOG_LOGGER_INFO(
@@ -28,11 +28,11 @@ void EchoClient::run() {
         );
         std::cin >> data;
         buffer = std::vector<char>(data.begin(), data.end());
-        if (Operations::Error::SUCCESS != Operations::write(client, buffer)) {
+        if (IOObject::Error::SUCCESS != client.write(buffer)) {
             throw std::runtime_error("Can't write");
         }
         buffer.clear();
-        if (Operations::Error::SUCCESS != Operations::read(client, buffer)) {
+        if (IOObject::Error::SUCCESS != client.read(buffer)) {
             throw std::runtime_error("Can't read");
         }
         SPDLOG_LOGGER_INFO(
@@ -46,7 +46,7 @@ void EchoClient::run() {
 
 
 EchoClient::~EchoClient() {
-    Operations::close(client);
+    client.close();
     SPDLOG_LOGGER_INFO(
             spdlog::get(LOGGER_NAME),
             "Disconnected"

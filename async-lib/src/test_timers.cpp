@@ -11,6 +11,8 @@
 #include "epoll_async_handler.h"
 #include "timer_event.h"
 
+#include "promise.h"
+
 using namespace std::chrono_literals;
 
 void runHandler(SelectAsyncHandler *handler) {

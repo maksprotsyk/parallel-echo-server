@@ -8,33 +8,27 @@ SelectAsyncHandler::SelectAsyncHandler(): eventsNum(0), isFinished(false), sets(
 
 }
 
-bool SelectAsyncHandler::addEvent(Event *event) {
+bool SelectAsyncHandler::addEvent(Event& event) {
 
     EventData eventData;
-    eventData.onReady = [event](){return event->makeReady();};
-    eventData.onProcessed = [event](){return event->makeProcessed();};
-    eventData.callback = event->getCallback();
-    eventData.timeoutCallback = event->getTimeoutCallback();
-    eventData.onProcessedTimeout = [event]() {return event->makeProcessedTimeout();};
-    eventData.onTimeout = [event]() {return event->makeTimeout();};
-    eventData.fd = event->getDescriptor();
+    eventData.fromEvent(event);
 
-    size_t type = getType(event->getType());
+    size_t type = getType(event.getType());
 
     mapMutex.lock();
-    data.emplace(event->getDescriptor(), eventData);
+    data.emplace(event.getDescriptor(), eventData);
     mapMutex.unlock();
 
     selectMutex.lock();
     eventsNum++;
-    sets[type].insert(event->getDescriptor());
+    sets[type].insert(event.getDescriptor());
     selectMutex.unlock();
 
 
     return true;
 }
 
-bool SelectAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds &ms) {
+bool SelectAsyncHandler::addEvent(Event& event, const std::chrono::milliseconds &ms) {
     if (!addEvent(event)) {
         return false;
     }
@@ -42,26 +36,23 @@ bool SelectAsyncHandler::addEvent(Event *event, const std::chrono::milliseconds 
     std::unique_lock lock(queueMutex);
     Deadline deadline;
     deadline.deadline = std::chrono::system_clock::now() + ms;
-    deadline.fd = event->getDescriptor();
+    deadline.fd = event.getDescriptor();
     deadlines.emplace(deadline);
     return true;
 }
 
-bool SelectAsyncHandler::removeEvent(const Event *event) {
-    return removeEvent(event->getDescriptor());
+bool SelectAsyncHandler::removeEvent(const Event& event) {
+    return removeEvent(event.getDescriptor());
 }
 
-bool SelectAsyncHandler::detachEvent(const Event *event) {
+bool SelectAsyncHandler::detachEvent(const Event& event) {
     std::unique_lock lock(mapMutex);
-    auto itr = data.find(event->getDescriptor());
+    auto itr = data.find(event.getDescriptor());
     if (itr == data.end()) {
         return false;
     }
     auto& eventData = itr->second;
-    eventData.onReady = [](){return true;};
-    eventData.onProcessed = [](){return true;};
-    eventData.onTimeout = [](){return true;};
-    eventData.onProcessedTimeout = [](){return true;};
+    eventData.fromDetachedEvent(event);
 
     return true;
 }

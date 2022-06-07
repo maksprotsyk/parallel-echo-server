@@ -4,7 +4,6 @@
 #include "epoll_async_handler.h"
 #include "select_async_handler.h"
 #include "tcp_socket.h"
-#include "operations.h"
 #include "io_object.h"
 
 #include "echo_client.h"

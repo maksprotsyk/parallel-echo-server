@@ -6,7 +6,7 @@
 
 
 EchoServer::EchoServer(AbstractAsyncHandler *handler, const std::string &ip, int port): server(handler) {
-    if (Operations::Error::SUCCESS != Operations::bind(server, ip, port)) {
+    if (IOObject::Error::SUCCESS != server.bind(ip, port)) {
         throw std::runtime_error("Can't bind to the given address");
     }
     SPDLOG_LOGGER_INFO(
@@ -15,7 +15,7 @@ EchoServer::EchoServer(AbstractAsyncHandler *handler, const std::string &ip, int
     );
 
 
-    if (Operations::Error::SUCCESS != Operations::listen(server, 100)) {
+    if (IOObject::Error::SUCCESS != server.listen(100)) {
         throw std::runtime_error("Can't listen");
     }
     SPDLOG_LOGGER_INFO(
@@ -23,15 +23,15 @@ EchoServer::EchoServer(AbstractAsyncHandler *handler, const std::string &ip, int
             "Listening..."
     );
 
-    Operations::asyncAccept(server, [this](IOObject newObject, Operations::Error error) {
+    server.asyncAccept([this](IOObject newObject, IOObject::Error error) {
         acceptFunction(newObject, error);
     });
 
 }
 
 
-void EchoServer::readFunction(IOObject& usedObject, std::vector<char>& newData, Operations::Error error) {
-    if (error != Operations::Error::SUCCESS) {
+void EchoServer::readFunction(IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
+    if (error != IOObject::Error::SUCCESS) {
         deleteFunction(usedObject);
         return;
     }
@@ -39,24 +39,26 @@ void EchoServer::readFunction(IOObject& usedObject, std::vector<char>& newData, 
             spdlog::get(LOGGER_NAME),
             "Got data: {}",std::string(newData.begin(), newData.end())
     );
-    Operations::asyncWrite(usedObject, newData, [this](IOObject& usedObject, std::vector<char>& newData, Operations::Error error) {
+    usedObject.asyncWrite(newData, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
         writeFunction(usedObject, newData, error);
+
     });
 }
 
-void EchoServer::writeFunction(IOObject& usedObject, std::vector<char>& newData, Operations::Error error) {
-    if (error != Operations::Error::SUCCESS) {
+void EchoServer::writeFunction(IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
+    if (error != IOObject::Error::SUCCESS) {
         deleteFunction(usedObject);
         return;
     }
     newData.clear();
-    Operations::asyncRead(usedObject, newData, [this](IOObject& usedObject, std::vector<char>& newData, Operations::Error error) {
-        readFunction(usedObject, newData, error);
-    });
+    deleteFunction(usedObject);
+    //usedObject.asyncRead(newData, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
+    //    readFunction(usedObject, newData, error);
+    //});
 }
 
-void EchoServer::acceptFunction(IOObject newObject, Operations::Error error) {
-    if (error == Operations::Error::SUCCESS) {
+void EchoServer::acceptFunction(IOObject newObject, IOObject::Error error) {
+    if (error == IOObject::Error::SUCCESS) {
         connections.emplace(
                 newObject.getDescriptor(),
                 newObject
@@ -71,11 +73,11 @@ void EchoServer::acceptFunction(IOObject newObject, Operations::Error error) {
                 spdlog::get(LOGGER_NAME),
                 "Accepted connection, currently online users: {}", connections.size()
         );
-        Operations::asyncRead(object, buffer, [this](IOObject& usedObject, std::vector<char>& newData, Operations::Error error) {
+        object.asyncRead(buffer, [this](IOObject& usedObject, std::vector<char>& newData, IOObject::Error error) {
             readFunction(usedObject, newData, error);
         });
     }
-    Operations::asyncAccept(server, [this](IOObject newObject, Operations::Error error) {
+    server.asyncAccept([this](IOObject newObject, IOObject::Error error) {
         acceptFunction(newObject, error);
     });
 }
@@ -85,7 +87,7 @@ void EchoServer::deleteFunction(IOObject obj) {
             spdlog::get(LOGGER_NAME),
             "Disconnecting..."
     );
-    Operations::close(obj);
+    obj.close();
     buffers.erase(obj.getDescriptor());
     connections.erase(obj.getDescriptor());
     SPDLOG_LOGGER_INFO(

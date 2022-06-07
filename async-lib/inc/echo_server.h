@@ -8,7 +8,6 @@
 #include <iostream>
 
 #include "tcp_socket.h"
-#include "operations.h"
 #include "abstract_async_handler.h"
 #include "logging.h"
 
@@ -16,9 +15,9 @@ class EchoServer {
 public:
     EchoServer(AbstractAsyncHandler* handler, const std::string& ip, int port);
 
-    void readFunction(IOObject& usedObject, std::vector<char>& newData, Operations::Error error);
-    void writeFunction(IOObject& usedObject, std::vector<char>& newData, Operations::Error error);
-    void acceptFunction(IOObject newObject, Operations::Error error);
+    void readFunction(IOObject& usedObject, std::vector<char>& newData, IOObject::Error error);
+    void writeFunction(IOObject& usedObject, std::vector<char>& newData, IOObject::Error error);
+    void acceptFunction(IOObject newObject, IOObject::Error error);
     void deleteFunction(IOObject obj);
 private:
     TcpSocket server;
