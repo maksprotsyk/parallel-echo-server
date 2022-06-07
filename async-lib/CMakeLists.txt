@@ -19,7 +19,8 @@ add_library(async
         src/select_async_handler.cpp
         inc/promise.h
         src/event_data.cpp
-        inc/udp_socket.h src/udp_socket.cpp)
+        inc/udp_socket.h src/udp_socket.cpp
+        src/timer_event.cpp inc/timer_event.h)
 
 
 target_include_directories(async PUBLIC inc)
