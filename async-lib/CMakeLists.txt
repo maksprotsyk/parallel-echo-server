@@ -18,7 +18,7 @@ add_library(async
         src/echo_client.cpp
         src/deadline.cpp
         src/select_async_handler.cpp
-        )
+        src/timer_event.cpp inc/timer_event.h)
 
 
 target_include_directories(async PUBLIC inc)
